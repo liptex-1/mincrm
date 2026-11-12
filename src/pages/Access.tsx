@@ -3,6 +3,7 @@ import { LuLock, LuPencil, LuPlus, LuShieldCheck, LuTrash2 } from 'react-icons/l
 import type { RoleDef, UserRole } from '../db/cloud';
 import { formatDate } from '../domain/money';
 import { removeRole, updateUser, upsertRole, useApp, useData, errMessage, ALL_SECTIONS } from '../store/store';
+import { MemberAvatar, MemberModal } from './Members';
 import { Alert, Btn, Card, Chip, Empty, Field, Input, Modal, Select, Tabs, Textarea, useUi } from '../ui/kit';
 
 export const SECTION_LABELS: Record<string, string> = { dashboard: 'Главная', clients: 'Клиенты', orders: 'Заказы', production: 'Производство', finance: 'Финансы', partners: 'Партнёры', distribution: 'Распределение', analytics: 'Аналитика', settings: 'Настройки', access: 'Доступ', cabinet: 'Мой кабинет' };
@@ -24,7 +25,8 @@ function Users() {
   const users = useApp((s) => s.users);
   const roles = useApp((s) => s.roles);
   const me = useApp((s) => s.user);
-  const names = useApp((s) => s.names);
+  const members = useApp((s) => s.members);
+  const [openId, setOpenId] = useState<string | null>(null);
   const d = useData();
   const { toast } = useUi();
   const act = async (u: UserRole, patch: Parameters<typeof updateUser>[1]) => { try { await updateUser(u.user_id, patch); toast('Сохранено'); } catch (e) { toast(errMessage(e), true); } };
@@ -36,7 +38,7 @@ function Users() {
           <thead><tr><th>Почта</th><th>Роль</th><th>Привязка</th><th>Регистрация</th></tr></thead>
           <tbody>{users.map((u) => { const role = roles.find((r) => r.key === u.role); return (
             <tr key={u.user_id}>
-              <td><b>{names[u.user_id] ?? u.email ?? '—'}</b>{names[u.user_id] && <div className="small muted">{u.email}</div>}{u.user_id === me?.id && <> <Chip tone="green">это вы</Chip></>}</td>
+              <td><button type="button" className="linklike row" style={{ gap: 10, flexWrap: 'nowrap' }} onClick={() => setOpenId(u.user_id)}>{(() => { const m = members.find((x) => x.user_id === u.user_id); return m ? <MemberAvatar m={m} /> : null; })()}<span style={{ textAlign: 'left' }}><b>{members.find((x) => x.user_id === u.user_id)?.display_name ?? u.email ?? '—'}</b>{members.find((x) => x.user_id === u.user_id)?.display_name && <div className="small muted">{u.email}</div>}</span></button>{u.blocked && <Chip tone="red">заблокирован</Chip>}{u.user_id === me?.id && <> <Chip tone="green">это вы</Chip></>}</td>
               <td style={{ minWidth: 190 }}><Select value={u.role} onChange={(e) => act(u, { role: e.target.value })}>{roles.map((r) => <option key={r.key} value={r.key}>{r.title}</option>)}</Select></td>
               <td style={{ minWidth: 220 }}>
                 {role?.scope === 'own_partner' && <Select value={u.partner_id ?? ''} onChange={(e) => act(u, { partner_id: e.target.value || null })}><option value="">Выберите партнёра…</option>{d.partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>}
@@ -47,6 +49,7 @@ function Users() {
             </tr>); })}</tbody>
         </table></div>}
       </Card>
+      {openId && <MemberModal id={openId} onClose={() => setOpenId(null)} />}
     </>
   );
 }

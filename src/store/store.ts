@@ -6,17 +6,17 @@ import { createStorage, exportBackup, parseBackup, type StorageAdapter } from '.
 import * as cloud from '../db/cloud';
 import type { RoleDef, UserRole } from '../db/cloud';
 
-export type AuthState = 'loading' | 'signed_out' | 'recovery' | 'ready' | 'no_profile';
+export type AuthState = 'loading' | 'signed_out' | 'recovery' | 'ready' | 'no_profile' | 'blocked';
 export const ALL_SECTIONS = ['dashboard', 'clients', 'orders', 'production', 'finance', 'partners', 'distribution', 'analytics', 'settings', 'access'];
 
 export interface AppState {
   ready: boolean; persistent: boolean; data: Data;
   cloud: boolean; auth: AuthState; user?: { id: string; email: string };
-  me?: UserRole; role?: RoleDef; roles: RoleDef[]; users: UserRole[]; profile?: cloud.Profile; names: Record<string, string>; canWrite: boolean; notice?: string;
+  me?: UserRole; role?: RoleDef; roles: RoleDef[]; users: UserRole[]; profile?: cloud.Profile; members: cloud.Member[]; canWrite: boolean; notice?: string;
 }
 const LOCAL_ROLE: RoleDef = { key: 'owner', title: 'Владелец', description: '', scope: 'all', read_collections: [], sections: ALL_SECTIONS, can_write: true, is_system: true };
 
-let state: AppState = { ready: false, persistent: true, data: emptyData(), cloud: cloud.CLOUD, auth: 'loading', roles: [], users: [], names: {}, canWrite: true };
+let state: AppState = { ready: false, persistent: true, data: emptyData(), cloud: cloud.CLOUD, auth: 'loading', roles: [], users: [], members: [], canWrite: true };
 const listeners = new Set<() => void>();
 let adapter: StorageAdapter | null = null;
 let queue: Promise<unknown> = Promise.resolve();
@@ -59,10 +59,12 @@ export async function enter() {
     const { me, roles } = await cloud.fetchProfile(user.id);
     const role = roles.find((r) => r.key === me?.role);
     if (!me || !role) return set({ user, auth: 'no_profile', roles });
+    if (me.blocked) { stopPolling(); return set({ user, me, auth: 'blocked', roles }); }
     const data = await adapter!.load();
     const users = role.key === 'owner' ? await cloud.fetchUsers() : [];
-    const [profile, names] = await Promise.all([cloud.fetchMyProfile(user.id).catch(() => undefined), role.key === 'owner' ? cloud.fetchProfileNames().catch(() => ({})) : Promise.resolve({})]);
-    set({ user, me, role, roles, users, profile, names, data, canWrite: role.can_write, auth: 'ready', persistent: true });
+    const [profile, members] = await Promise.all([cloud.fetchMyProfile(user.id).catch(() => undefined), cloud.fetchMembers().catch(() => [] as cloud.Member[])]);
+    cloud.touchSeen().catch(() => undefined);
+    set({ user, me, role, roles, users, profile, members, data, canWrite: role.can_write, auth: 'ready', persistent: true });
     startPolling();
   } catch (e) {
     if (e instanceof cloud.CloudError && e.status === 401) { await signOutUser(); set({ notice: 'Сессия истекла — войдите снова' }); }
@@ -72,9 +74,10 @@ export async function enter() {
 
 function startPolling() {
   stopPolling();
+  let n = 0;
   const tick = async () => {
     if (document.hidden || pending > 0 || state.auth !== 'ready') return;
-    try { await refreshFromCloud(); } catch { /* временная сеть — повторим */ }
+    try { if (n++ % 3 === 0) cloud.touchSeen().catch(() => undefined); await refreshFromCloud(); } catch { /* временная сеть — повторим */ }
   };
   poll = setInterval(tick, 20000);
   document.addEventListener('visibilitychange', tick);
@@ -83,30 +86,40 @@ function stopPolling() { if (poll) clearInterval(poll); poll = null; }
 
 export async function refreshFromCloud() {
   if (!cloud.CLOUD || !state.user) return;
-  const [data, prof] = await Promise.all([adapter!.load(), cloud.fetchProfile(state.user.id)]);
+  const [data, prof, members, profile] = await Promise.all([adapter!.load(), cloud.fetchProfile(state.user.id), cloud.fetchMembers().catch(() => state.members), cloud.fetchMyProfile(state.user.id).catch(() => state.profile)]);
   if (pending > 0) return; // во время записи не затираем свежие изменения
+  if (prof.me?.blocked) { stopPolling(); return set({ auth: 'blocked', me: prof.me }); }
   const role = prof.roles.find((r) => r.key === prof.me?.role);
   if (!prof.me || !role) return set({ auth: 'no_profile' });
   const users = role.key === 'owner' ? await cloud.fetchUsers() : [];
-  const same = JSON.stringify(data) === JSON.stringify(state.data) && JSON.stringify(prof) === JSON.stringify({ me: state.me, roles: state.roles }) && JSON.stringify(users) === JSON.stringify(state.users);
-  if (!same) set({ data, me: prof.me, role, roles: prof.roles, users, canWrite: role.can_write });
+  const same = JSON.stringify(data) === JSON.stringify(state.data) && JSON.stringify(members) === JSON.stringify(state.members) && JSON.stringify(profile) === JSON.stringify(state.profile) && JSON.stringify(prof) === JSON.stringify({ me: state.me, roles: state.roles }) && JSON.stringify(users) === JSON.stringify(state.users);
+  if (!same) set({ data, me: prof.me, role, roles: prof.roles, users, members, profile, canWrite: role.can_write });
 }
 
 // ───────── Аутентификация ─────────
 export async function login(email: string, password: string) { await cloud.signIn(email, password); await enter(); }
-export async function register(email: string, password: string): Promise<boolean> { const ok = await cloud.signUp(email, password); if (ok) await enter(); return ok; }
+export async function register(email: string, password: string, meta: Record<string, string> = {}): Promise<boolean> { const ok = await cloud.signUp(email, password, meta); if (ok) await enter(); return ok; }
 export async function finishRecovery(password: string) { await cloud.setPassword(password); await enter(); }
 export async function signOutUser() {
   stopPolling();
   try { const { disablePush } = await import('../pwa'); await disablePush(); } catch { /* ignore */ }
   await cloud.signOut();
-  set({ auth: 'signed_out', user: undefined, me: undefined, role: undefined, users: [], profile: undefined, names: {}, data: emptyData(), canWrite: false, notice: undefined });
+  set({ auth: 'signed_out', user: undefined, me: undefined, role: undefined, users: [], profile: undefined, members: [], data: emptyData(), canWrite: false, notice: undefined });
 }
-export async function updateProfile(p: { display_name: string | null; phone: string | null; notify: cloud.NotifyPrefs }) {
+export async function updateProfile(p: cloud.ProfilePatch) {
   const u = state.user; if (!u) return;
-  await cloud.saveMyProfile(u.id, p);
-  set({ profile: { user_id: u.id, ...p }, names: p.display_name ? { ...state.names, [u.id]: p.display_name } : state.names });
+  await cloud.saveProfile(u.id, p);
+  const profile = { ...(state.profile ?? { user_id: u.id, display_name: null, phone: null, about: null, avatar: null, show_phone: false, notify: cloud.defaultNotify }), ...p } as cloud.Profile;
+  set({ profile, members: state.members.map((m) => (m.user_id === u.id ? { ...m, display_name: profile.display_name, avatar: profile.avatar, about: profile.about, phone: profile.phone } : m)) });
 }
+async function reloadPeople() {
+  const [members, users] = await Promise.all([cloud.fetchMembers(), state.role?.key === 'owner' ? cloud.fetchUsers() : Promise.resolve([] as UserRole[])]);
+  set({ members, users });
+}
+/** Владелец: правка профиля другого участника. */
+export async function adminEditProfile(userId: string, p: cloud.ProfilePatch) { await cloud.saveProfile(userId, p); await reloadPeople(); }
+export async function adminBlock(userId: string, flag: boolean) { await cloud.adminSetBlocked(userId, flag); await reloadPeople(); }
+export async function adminDelete(userId: string) { await cloud.adminDeleteUser(userId); await reloadPeople(); }
 export const clearNotice = () => set({ notice: undefined });
 
 // ───────── Запись ─────────

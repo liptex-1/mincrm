@@ -4,6 +4,7 @@
  */
 import { COLLECTIONS, emptyData, type Batch, type Data } from '../domain/types';
 import type { StorageAdapter } from './storage';
+import { optStore } from './../consent';
 
 declare const __SB_URL__: string;
 declare const __SB_KEY__: string;
@@ -13,14 +14,15 @@ export const CLOUD = !!(SB_URL && SB_KEY);
 
 export interface Session { access_token: string; refresh_token: string; expires_at: number }
 export interface RoleDef { key: string; title: string; description: string; scope: 'all' | 'own_partner' | 'own_client'; read_collections: string[]; sections: string[]; can_write: boolean; is_system: boolean }
-export interface UserRole { user_id: string; email: string | null; role: string; partner_id: string | null; client_id: string | null; created_at: string }
+export interface UserRole { user_id: string; email: string | null; role: string; partner_id: string | null; client_id: string | null; created_at: string; blocked?: boolean }
 export class CloudError extends Error { constructor(m: string, public status = 0) { super(m); } }
 
 const LS = 'minicrm.session';
 let session: Session | null = null;
 export const getSession = () => session;
-export function loadStoredSession() { try { session = JSON.parse(localStorage.getItem(LS) || 'null'); } catch { session = null; } return session; }
-function saveSession(s: Session | null) { session = s; try { s ? localStorage.setItem(LS, JSON.stringify(s)) : localStorage.removeItem(LS); } catch { /* приватный режим */ } }
+export function loadStoredSession() { try { session = JSON.parse(localStorage.getItem(LS) || sessionStorage.getItem(LS) || 'null'); } catch { session = null; } return session; }
+/** Сессия хранится надолго только при согласии на cookie; иначе — до закрытия вкладки. */
+function saveSession(s: Session | null) { session = s; try { localStorage.removeItem(LS); sessionStorage.removeItem(LS); if (s) optStore().setItem(LS, JSON.stringify(s)); } catch { /* приватный режим */ } }
 
 export function jwtUser(token: string): { id: string; email: string } {
   const p = JSON.parse(decodeURIComponent(escape(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))));
@@ -31,7 +33,7 @@ const RU: [RegExp, string][] = [
   [/invalid login credentials/i, 'Неверная почта или пароль'], [/email not confirmed/i, 'Почта не подтверждена — откройте письмо со ссылкой'],
   [/already registered|already been registered/i, 'Этот email уже зарегистрирован — войдите'], [/at least \d+ characters/i, 'Пароль слишком короткий (минимум 6 символов)'],
   [/rate limit|too many|security purposes/i, 'Слишком много попыток — подождите минуту'], [/valid email|invalid email|unable to validate email/i, 'Некорректный адрес почты'],
-  [/signups? not allowed|signup is disabled/i, 'Регистрация отключена'], [/same password|different from the old/i, 'Новый пароль должен отличаться от старого'],
+  [/signups? not allowed|signup is disabled|signups not allowed for otp/i, 'Этой почты нет в системе — сначала зарегистрируйтесь'], [/banned|user is banned/i, 'Аккаунт заблокирован владельцем'], [/same password|different from the old/i, 'Новый пароль должен отличаться от старого'],
   [/expired|invalid.*(token|link)/i, 'Ссылка устарела — запросите новую'],
 ];
 export const ruError = (m: string) => RU.find(([r]) => r.test(m))?.[1] ?? m;
@@ -62,12 +64,12 @@ export async function signIn(email: string, password: string) {
   saveSession(toSession(await parse(await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, { method: 'POST', headers: base(), body: JSON.stringify({ email, password }) }))));
 }
 /** true — сессия сразу создана; false — нужно подтвердить почту. */
-export async function signUp(email: string, password: string): Promise<boolean> {
-  const b = await parse(await fetch(`${SB_URL}/auth/v1/signup?redirect_to=${encodeURIComponent(redirectUrl())}`, { method: 'POST', headers: base(), body: JSON.stringify({ email, password }) }));
+export async function signUp(email: string, password: string, meta: Record<string, string> = {}): Promise<boolean> {
+  const b = await parse(await fetch(`${SB_URL}/auth/v1/signup?redirect_to=${encodeURIComponent(redirectUrl())}`, { method: 'POST', headers: base(), body: JSON.stringify({ email, password, data: meta }) }));
   if (b?.access_token) { saveSession(toSession(b)); return true; }
   return false;
 }
-export const sendMagicLink = async (email: string) => void parse(await fetch(`${SB_URL}/auth/v1/otp?redirect_to=${encodeURIComponent(redirectUrl())}`, { method: 'POST', headers: base(), body: JSON.stringify({ email, create_user: true }) }));
+export const sendMagicLink = async (email: string) => void parse(await fetch(`${SB_URL}/auth/v1/otp?redirect_to=${encodeURIComponent(redirectUrl())}`, { method: 'POST', headers: base(), body: JSON.stringify({ email, create_user: false }) }));
 export const sendRecovery = async (email: string) => void parse(await fetch(`${SB_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(redirectUrl())}`, { method: 'POST', headers: base(), body: JSON.stringify({ email }) }));
 export async function setPassword(password: string) { await parse(await fetch(`${SB_URL}/auth/v1/user`, { method: 'PUT', headers: base(await token()), body: JSON.stringify({ password }) })); }
 export async function signOut() {
@@ -120,19 +122,31 @@ export const fetchMyOrders = (): Promise<{ client: { name: string; phone?: strin
 
 // ───────── Профиль пользователя и push ─────────
 export interface NotifyPrefs { new_user: boolean; orders: boolean; money: boolean; other: boolean }
-export interface Profile { user_id: string; display_name: string | null; phone: string | null; notify: NotifyPrefs }
+export interface Profile { user_id: string; display_name: string | null; phone: string | null; about: string | null; avatar: string | null; show_phone: boolean; notify: NotifyPrefs }
 export const defaultNotify: NotifyPrefs = { new_user: true, orders: true, money: true, other: false };
 export async function fetchMyProfile(userId: string): Promise<Profile> {
-  const rows = await api(`/rest/v1/profiles?user_id=eq.${userId}&select=*`);
-  return rows[0] ? { ...rows[0], notify: { ...defaultNotify, ...rows[0].notify } } : { user_id: userId, display_name: null, phone: null, notify: defaultNotify };
+  const rows = await api(`/rest/v1/profiles?user_id=eq.${userId}&select=user_id,display_name,phone,about,avatar,show_phone,notify`);
+  return rows[0] ? { ...rows[0], notify: { ...defaultNotify, ...rows[0].notify } } : { user_id: userId, display_name: null, phone: null, about: null, avatar: null, show_phone: false, notify: defaultNotify };
 }
-export async function saveMyProfile(userId: string, p: { display_name: string | null; phone: string | null; notify: NotifyPrefs }) {
+export type ProfilePatch = Partial<Omit<Profile, 'user_id'>>;
+export async function saveProfile(userId: string, p: ProfilePatch) {
   await api('/rest/v1/profiles?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: userId, ...p, updated_at: new Date().toISOString() }) });
 }
-export const fetchProfileNames = async (): Promise<Record<string, string>> => {
-  const rows: { user_id: string; display_name: string | null }[] = await api('/rest/v1/profiles?select=user_id,display_name');
-  return Object.fromEntries(rows.filter((r) => r.display_name).map((r) => [r.user_id, r.display_name!]));
-};
+export interface Member { user_id: string; email: string | null; role: string; role_title: string; display_name: string | null; avatar: string | null; about: string | null; phone: string | null; online: boolean; seen_ago_s: number | null; created_at: string; blocked: boolean; partner_id: string | null; client_id: string | null }
+export const fetchMembers = (): Promise<Member[]> => rpc('members', {});
+export const touchSeen = () => rpc('touch_seen', {});
+export const adminSetBlocked = (target: string, flag: boolean) => rpc('admin_set_blocked', { target, flag });
+export const adminDeleteUser = (target: string) => rpc('admin_delete_user', { target });
+
+export interface AboutInfo { name: string; email: string; phone: string; address: string; telegram: string; text: string }
+export const emptyAbout: AboutInfo = { name: '', email: '', phone: '', address: '', telegram: '', text: '' };
+export async function fetchAbout(): Promise<AboutInfo> {
+  const res = await fetch(`${SB_URL}/rest/v1/site_info?key=eq.about&select=data`, { headers: { apikey: SB_KEY } });
+  const rows = await parse(res); return { ...emptyAbout, ...(rows?.[0]?.data ?? {}) };
+}
+export async function saveAbout(a: AboutInfo) {
+  await api('/rest/v1/site_info?on_conflict=key', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ key: 'about', data: a, updated_at: new Date().toISOString() }) });
+}
 export async function fetchVapidKey(): Promise<string> {
   const res = await fetch(`${SB_URL}/functions/v1/push`, { headers: { apikey: SB_KEY } });
   const j = await parse(res); if (!j.key) throw new CloudError('Сервер уведомлений не настроен'); return j.key;

@@ -171,6 +171,7 @@ export function useSort<T>(rows: T[], accessors: Record<string, (r: T) => string
   return { sorted, th };
 }
 
-export function Avatar({ name, large }: { name: string; large?: boolean }) {
-  return <div className={large ? 'avatar-lg' : 'avatar'}>{(name.trim()[0] ?? '?').toUpperCase()}</div>;
+export function Avatar({ name, large, xl, src }: { name: string; large?: boolean; xl?: boolean; src?: string | null }) {
+  const cls = xl ? 'avatar-lg avatar-xl' : large ? 'avatar-lg' : 'avatar';
+  return src ? <img className={cx(cls, 'avatar-img')} src={src} alt="" /> : <div className={cls}>{(name.trim()[0] ?? '?').toUpperCase()}</div>;
 }

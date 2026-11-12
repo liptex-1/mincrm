@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { LuMailCheck, LuNfc } from 'react-icons/lu';
+import { LEGAL_VERSION } from '../version';
 import { sendMagicLink, sendRecovery } from '../db/cloud';
 import { clearNotice, finishRecovery, login, register, signOutUser, useApp } from '../store/store';
 import { Alert, Btn, Field, Input, PasswordInput } from '../ui/kit';
@@ -17,6 +18,8 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [sent, setSent] = useState('');
+  const [terms, setTerms] = useState(false);
+  const [priv, setPriv] = useState(false);
 
   const go = async (fn: () => Promise<void>) => { setBusy(true); setErr(''); clearNotice(); try { await fn(); } catch (e) { setErr(e instanceof Error ? e.message : 'Ошибка'); } finally { setBusy(false); } };
   const valid = /^\S+@\S+\.\S+$/.test(email.trim());
@@ -27,7 +30,8 @@ export default function Login() {
     else if (mode === 'up') {
       if (pw.length < 6) throw new Error('Пароль — минимум 6 символов');
       if (pw !== pw2) throw new Error('Пароли не совпадают');
-      if (!(await register(e, pw))) setSent(`Мы отправили письмо на ${e}. Откройте его и подтвердите почту, затем войдите.`);
+      if (!terms || !priv) throw new Error('Для регистрации примите Пользовательское соглашение и согласие на обработку персональных данных');
+      if (!(await register(e, pw, { terms_at: new Date().toISOString(), terms_version: LEGAL_VERSION }))) setSent(`Мы отправили письмо на ${e}. Откройте его и подтвердите почту, затем войдите.`);
     } else if (mode === 'magic') { await sendMagicLink(e); setSent(`Ссылка для входа отправлена на ${e}. Она действует ограниченное время.`); }
     else { await sendRecovery(e); setSent(`Письмо для смены пароля отправлено на ${e}.`); }
   });
@@ -48,6 +52,13 @@ export default function Login() {
     </Shell>
   );
 
+  if (auth === 'blocked') return (
+    <Shell title="Аккаунт заблокирован">
+      <Alert tone="red">Владелец заблокировал ваш доступ. Если это ошибка — свяжитесь с ним, контакты указаны на странице «О нас».</Alert>
+      <Btn style={{ marginTop: 14, width: '100%' }} onClick={signOutUser}>Выйти</Btn>
+    </Shell>
+  );
+
   return (
     <Shell title={TITLES[mode]}>
       {sent ? (
@@ -61,8 +72,15 @@ export default function Login() {
           <Field label="Электронная почта"><Input type="email" aria-label="Электронная почта" autoFocus autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" /></Field>
           {(mode === 'in' || mode === 'up') && <Field label="Пароль"><PasswordInput aria-label="Пароль" autoComplete={mode === 'in' ? 'current-password' : 'new-password'} value={pw} onChange={(e) => setPw(e.target.value)} /></Field>}
           {mode === 'up' && <Field label="Повторите пароль"><PasswordInput aria-label="Повторите пароль" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} /></Field>}
+          {mode === 'up' && (
+            <div className="col" style={{ gap: 8 }}>
+              <label className="check"><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /><span>Я принимаю <a href="#/terms" target="_blank" rel="noopener">Пользовательское соглашение</a></span></label>
+              <label className="check"><input type="checkbox" checked={priv} onChange={(e) => setPriv(e.target.checked)} /><span>Я даю согласие на обработку персональных данных согласно <a href="#/privacy" target="_blank" rel="noopener">Политике обработки персональных данных</a></span></label>
+            </div>
+          )}
+          {mode === 'magic' && <div className="small muted">Ссылка работает для уже зарегистрированных пользователей. Нового аккаунта нет — сначала зарегистрируйтесь с паролем.</div>}
           {err && <div className="err" style={{ color: 'var(--danger)', fontSize: 13 }}>{err}</div>}
-          <Btn kind="primary" type="submit" disabled={!valid || busy} style={{ padding: '12px 16px' }}>{busy ? 'Подождите…' : { in: 'Войти', up: 'Создать аккаунт', magic: 'Отправить ссылку', forgot: 'Отправить письмо' }[mode]}</Btn>
+          <Btn kind="primary" type="submit" disabled={!valid || busy || (mode === 'up' && !(terms && priv))} style={{ padding: '12px 16px' }}>{busy ? 'Подождите…' : { in: 'Войти', up: 'Создать аккаунт', magic: 'Отправить ссылку', forgot: 'Отправить письмо' }[mode]}</Btn>
           <div className="row small" style={{ justifyContent: 'center', gap: 14 }}>
             {mode !== 'in' && <a href="#" onClick={(e) => { e.preventDefault(); setMode('in'); setErr(''); }}>Войти с паролем</a>}
             {mode === 'in' && <a href="#" onClick={(e) => { e.preventDefault(); setMode('up'); setErr(''); }}>Регистрация</a>}
@@ -82,6 +100,7 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
         <div className="brand" style={{ justifyContent: 'center', paddingBottom: 10 }}><div className="brand-logo"><LuNfc size={20} /></div><div><b>MiniCRM</b><span>Управление малым бизнесом</span></div></div>
         <h1 style={{ fontSize: 22, textAlign: 'center', margin: '8px 0 18px' }}>{title}</h1>
         {children}
+        <div className="login-docs small muted"><a href="#/terms" target="_blank" rel="noopener">Соглашение</a> · <a href="#/privacy" target="_blank" rel="noopener">Политика данных</a> · <a href="#/cookies" target="_blank" rel="noopener">Cookie</a></div>
       </div>
     </div>
   );

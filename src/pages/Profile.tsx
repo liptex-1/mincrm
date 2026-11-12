@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
-import { LuBell, LuBellOff, LuLogOut, LuSend, LuShare, LuSmartphone } from 'react-icons/lu';
+import { useEffect, useRef, useState } from 'react';
+import { LuBell, LuBellOff, LuCamera, LuLogOut, LuSend, LuShare, LuSmartphone, LuTrash2 } from 'react-icons/lu';
+import { avatarFromFile } from '../img';
+import { BackgroundCard } from '../ui/BackgroundCard';
 import { defaultNotify, sendTestPush, setPassword, type NotifyPrefs } from '../db/cloud';
 import { currentSub, disablePush, enablePush, isIOS, isStandalone, pushSupported } from '../pwa';
 import { errMessage, signOutUser, updateProfile, useApp } from '../store/store';
-import { Alert, Avatar, Btn, Card, Chip, Field, Input, PasswordInput, useUi } from '../ui/kit';
+import { Alert, Avatar, Btn, Card, Chip, Field, Input, PasswordInput, Textarea, useUi } from '../ui/kit';
 
 const KINDS: [keyof NotifyPrefs, string, string][] = [
   ['new_user', 'Новые пользователи', 'Кто-то зарегистрировался и ждёт назначения роли (для владельца)'],
@@ -24,6 +26,8 @@ export default function Profile() {
   const { toast } = useUi();
   const [name, setName] = useState(profile?.display_name ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
+  const [about, setAbout] = useState(profile?.about ?? '');
+  const fileRef = useRef<HTMLInputElement>(null);
   const [notify, setNotify] = useState<NotifyPrefs>(profile?.notify ?? defaultNotify);
   const [busy, setBusy] = useState(false);
   const [pw, setPw] = useState('');
@@ -31,15 +35,16 @@ export default function Profile() {
   const [pwErr, setPwErr] = useState('');
   const [subscribed, setSubscribed] = useState(false);
   const [perm, setPerm] = useState<string>(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
-  useEffect(() => { setName(profile?.display_name ?? ''); setPhone(profile?.phone ?? ''); setNotify(profile?.notify ?? defaultNotify); }, [profile]);
+  useEffect(() => { setName(profile?.display_name ?? ''); setPhone(profile?.phone ?? ''); setAbout(profile?.about ?? ''); setNotify(profile?.notify ?? defaultNotify); }, [profile]);
   useEffect(() => { currentSub().then((s) => setSubscribed(!!s)); }, []);
 
   const ios = isIOS();
   const needInstall = ios && !isStandalone();
   const canPush = pushSupported() && !needInstall;
   const guard = async (fn: () => Promise<void>, ok?: string) => { setBusy(true); try { await fn(); if (ok) toast(ok); } catch (e) { toast(errMessage(e), true); } finally { setBusy(false); } };
-  const save = (next = notify) => guard(() => updateProfile({ display_name: name.trim() || null, phone: phone.trim() || null, notify: next }), 'Профиль сохранён');
-  const toggle = (k: keyof NotifyPrefs, v: boolean) => { const n = { ...notify, [k]: v }; setNotify(n); guard(() => updateProfile({ display_name: name.trim() || null, phone: phone.trim() || null, notify: n })); };
+  const save = () => guard(() => updateProfile({ display_name: name.trim() || null, phone: phone.trim() || null, about: about.trim() || null }), 'Профиль сохранён');
+  const setAvatar = (f?: File | null) => { if (f) guard(async () => updateProfile({ avatar: await avatarFromFile(f) }), 'Аватарка обновлена'); if (fileRef.current) fileRef.current.value = ''; };
+  const toggle = (k: keyof NotifyPrefs, v: boolean) => { const n = { ...notify, [k]: v }; setNotify(n); guard(() => updateProfile({ notify: n })); };
   const turnOn = () => guard(async () => { try { await enablePush(); setSubscribed(true); } finally { setPerm(Notification.permission); } }, 'Уведомления включены');
   const turnOff = () => guard(async () => { await disablePush(); setSubscribed(false); }, 'Уведомления отключены на этом устройстве');
   const test = () => guard(async () => { const r = await sendTestPush(); if (!r.sent) throw new Error('Не удалось отправить: сначала включите уведомления на этом устройстве'); }, 'Тестовое уведомление отправлено');
@@ -58,12 +63,16 @@ export default function Profile() {
       <div className="grid g2 mb" style={{ alignItems: 'start' }}>
         <Card title="Личные данные">
           <div className="row" style={{ gap: 14, marginBottom: 16, flexWrap: 'nowrap' }}>
-            <Avatar name={name || user?.email || '?'} large />
-            <div style={{ minWidth: 0 }}><b style={{ overflowWrap: 'anywhere' }}>{user?.email}</b><div style={{ marginTop: 4 }}><Chip tone="green">{role?.title}</Chip></div></div>
+            <Avatar name={name || user?.email || '?'} src={profile?.avatar} xl />
+            <div style={{ minWidth: 0 }}><b style={{ overflowWrap: 'anywhere' }}>{user?.email}</b><div style={{ marginTop: 4 }}><Chip tone="green">{role?.title}</Chip></div>
+              <input ref={fileRef} type="file" accept="image/*" hidden aria-label="Файл аватарки" onChange={(e) => setAvatar(e.target.files?.[0])} />
+              <div className="row" style={{ marginTop: 8, gap: 6 }}><Btn size="sm" icon={<LuCamera size={14} />} disabled={busy} onClick={() => fileRef.current?.click()}>{profile?.avatar ? 'Сменить фото' : 'Загрузить фото'}</Btn>{profile?.avatar && <Btn size="sm" icon={<LuTrash2 size={14} />} disabled={busy} onClick={() => guard(() => updateProfile({ avatar: null }), 'Аватарка удалена')}>Убрать</Btn>}</div></div>
           </div>
           <form className="col" style={{ gap: 14 }} onSubmit={(e) => { e.preventDefault(); save(); }}>
-            <Field label="Имя"><Input aria-label="Имя" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Как к вам обращаться" autoComplete="name" /></Field>
+            <Field label="Ник"><Input aria-label="Ник" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Как вас видят другие (иначе — почта)" autoComplete="nickname" /></Field>
             <Field label="Телефон"><Input aria-label="Телефон" type="tel" value={phone} maxLength={40} onChange={(e) => setPhone(e.target.value)} placeholder="+7 900 000-00-00" autoComplete="tel" /></Field>
+            <Field label="О себе"><Textarea aria-label="О себе" value={about} maxLength={400} rows={3} onChange={(e) => setAbout(e.target.value)} placeholder="Пара слов о себе — увидят другие участники" /></Field>
+            <div className="notify-row" style={{ borderTop: 0, padding: 0 }}><div><b>Показывать телефон другим участникам</b><div className="small muted">Владелец видит телефон всегда</div></div><Switch on={!!profile?.show_phone} label="Показывать телефон" onChange={(v) => guard(() => updateProfile({ show_phone: v }))} /></div>
             <Btn kind="primary" type="submit" disabled={busy}>Сохранить</Btn>
           </form>
         </Card>
@@ -77,6 +86,8 @@ export default function Profile() {
           </form>
         </Card>
       </div>
+
+      <div className="mb"><BackgroundCard /></div>
 
       <Card title="Уведомления" action={subscribed ? <Chip tone="green">включены на этом устройстве</Chip> : <Chip>выключены</Chip>}>
         {needInstall && (

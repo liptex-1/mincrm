@@ -1,5 +1,5 @@
 // MiniCRM service worker: офлайн-оболочка + push-уведомления.
-const CACHE = 'minicrm-shell-v1';
+const CACHE = 'minicrm-shell-v2';
 const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
