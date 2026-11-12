@@ -7,6 +7,9 @@ import { planSaveSettings } from '../domain/ops';
 import { MODE_LABELS, TX_LABELS, type DistMode } from '../domain/types';
 import { backupText, importBackup, loadDemo, markBackup, resetAll, useApp, useData } from '../store/store';
 import { download, MoneyInput, toCSV, toExcelXML, type Table } from '../ui/common';
+import { CLOUD } from '../db/cloud';
+import { updateBrand } from '../about';
+import { logoFromFile } from '../img';
 import { BackgroundCard } from '../ui/BackgroundCard';
 import { Btn, Card, Field, Input, Seg, Select, Tabs, useUi } from '../ui/kit';
 import { journalCSV } from './Finance';
@@ -42,11 +45,11 @@ export default function Settings() {
             <BackgroundCard />
             <Card title="Бизнес">
               <div className="col" style={{ gap: 14 }}>
-                <Field label="Название бизнеса"><Input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== s.businessName && patch({ businessName: name.trim() }, 'Название сохранено')} /></Field>
+                <Field label="Название бизнеса"><Input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== s.businessName && patch({ businessName: name.trim() }, 'Название сохранено').then((ok) => ok && CLOUD && updateBrand({ name: name.trim(), logo: s.logo ?? null }).catch(() => undefined))} /></Field>
                 <Field label="Логотип">
                   <div className="row">{s.logo ? <img src={s.logo} alt="" style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover' }} /> : <div className="brand-logo"><LuImage size={18} /></div>}
-                    <Btn size="sm" onClick={() => logoRef.current?.click()}>Загрузить</Btn>{s.logo && <Btn size="sm" kind="ghost" onClick={() => patch({ logo: undefined })}>Убрать</Btn>}
-                    <input ref={logoRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; if (f.size > 1_000_000) return toast('Логотип больше 1 МБ', true); const r = new FileReader(); r.onload = () => patch({ logo: String(r.result) }, 'Логотип обновлён'); r.readAsDataURL(f); }} /></div>
+                    <Btn size="sm" onClick={() => logoRef.current?.click()}>Загрузить</Btn>{s.logo && <Btn size="sm" kind="ghost" onClick={() => patch({ logo: undefined }, 'Логотип убран').then((ok) => ok && CLOUD && updateBrand({ name: s.businessName, logo: null }).catch(() => undefined))}>Убрать</Btn>}
+                    <input ref={logoRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; logoFromFile(f).then(async (logo) => { if (await patch({ logo }, 'Логотип обновлён — его увидят все') && CLOUD) await updateBrand({ name: s.businessName, logo }); }).catch((er) => toast(er instanceof Error ? er.message : 'Не удалось загрузить', true)); e.target.value = ''; }} /></div>
                 </Field>
                 <Field label="Валюта"><Select value={s.currency} onChange={(e) => patch({ currency: e.target.value })}>{['₽', '$', '€', '₸', '₴', 'Br'].map((c) => <option key={c}>{c}</option>)}</Select></Field>
               </div>

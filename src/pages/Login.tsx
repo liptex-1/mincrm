@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { LuMailCheck, LuNfc } from 'react-icons/lu';
 import { LEGAL_VERSION } from '../version';
+import { useBrand } from '../about';
 import { sendMagicLink, sendRecovery } from '../db/cloud';
 import { clearNotice, finishRecovery, login, register, signOutUser, useApp } from '../store/store';
 import { Alert, Btn, Field, Input, PasswordInput } from '../ui/kit';
@@ -94,10 +95,11 @@ export default function Login() {
 }
 
 function Shell({ title, children }: { title: string; children: React.ReactNode }) {
+  const brand = useBrand();
   return (
     <div className="login-wrap">
       <div className="card login-card">
-        <div className="brand" style={{ justifyContent: 'center', paddingBottom: 10 }}><div className="brand-logo"><LuNfc size={20} /></div><div><b>MiniCRM</b><span>Управление малым бизнесом</span></div></div>
+        <div className="brand" style={{ justifyContent: 'center', paddingBottom: 10 }}><div className="brand-logo">{brand.logo ? <img src={brand.logo} alt="" /> : <LuNfc size={20} />}</div><div><b>{brand.name || 'MiniCRM'}</b><span>Управление малым бизнесом</span></div></div>
         <h1 style={{ fontSize: 22, textAlign: 'center', margin: '8px 0 18px' }}>{title}</h1>
         {children}
         <div className="login-docs small muted"><a href="#/terms" target="_blank" rel="noopener">Соглашение</a> · <a href="#/privacy" target="_blank" rel="noopener">Политика данных</a> · <a href="#/cookies" target="_blank" rel="noopener">Cookie</a></div>

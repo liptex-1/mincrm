@@ -22,6 +22,7 @@ import About from './pages/About';
 import { CookiesDoc, PrivacyDoc, PublicLegal, TermsDoc } from './pages/Legal';
 import { CookieBanner } from './ui/CookieBanner';
 import { applyBg } from './bg';
+import { updateBrand, useBrand } from './about';
 import { readOpt, writeOpt } from './consent';
 import { CHANGELOG, VERSION_LABEL } from './version';
 import { Modal } from './ui/kit';
@@ -58,15 +59,20 @@ function Shell() {
   const allowed = [...(role?.sections ?? []), ...COMMON];
   const home = ((role?.sections ?? [])[0] as Route) ?? 'profile';
   const route: Route = allowed.includes(wanted) ? wanted : home;
+  const s = d.settings;
   const profile = useApp((x) => x.profile);
+  const brand = useBrand();
+  const bName = (isCloud ? brand.name : '') || s.businessName;
+  const bLogo = isCloud ? brand.logo : s.logo;
   const shownName = profile?.display_name || user?.email || '';
   const [open, setOpen] = useState(false);
   const [news, setNews] = useState(false);
   const [, bump] = useState(0);
-  const s = d.settings;
   useEffect(() => { document.documentElement.dataset.readonly = canWrite ? '0' : '1'; }, [canWrite]);
   useEffect(() => { if (wanted !== route) go(route); }, [wanted, route]);
-  useEffect(() => { applyTheme(s.theme, s.density, s.animations); document.title = `${s.businessName} · MiniCRM`; }, [s.theme, s.density, s.animations, s.businessName, canWrite]);
+  useEffect(() => { applyTheme(s.theme, s.density, s.animations); document.title = `${bName} · MiniCRM`; }, [s.theme, s.density, s.animations, bName, canWrite]);
+  // владелец один раз переносит уже заданные название и логотип в общий (видимый всем) брендинг
+  useEffect(() => { if (isCloud && role?.key === 'owner' && canWrite && ((s.logo ?? null) !== brand.logo || (s.businessName !== 'MiniCRM' && s.businessName !== brand.name))) { const t = setTimeout(() => updateBrand({ name: s.businessName, logo: s.logo ?? null }).catch(() => undefined), 1500); return () => clearTimeout(t); } }, [isCloud, role?.key, canWrite, s.logo, s.businessName, brand.logo, brand.name]);
   useEffect(() => {
     if (s.theme !== 'system') return;
     const mq = window.matchMedia('(prefers-color-scheme: dark)'); const h = () => applyTheme(s.theme, s.density, s.animations);
@@ -81,7 +87,7 @@ function Shell() {
     <div className="app">
       {open && <div className="scrim" onClick={() => setOpen(false)} />}
       <aside className={`sidebar ${open ? 'open' : ''}`}>
-        <div className="brand"><div className="brand-logo">{s.logo ? <img src={s.logo} alt="" /> : <LuNfc size={20} />}</div><div><b>{s.businessName}</b><span>MiniCRM</span></div></div>
+        <div className="brand"><div className="brand-logo">{bLogo ? <img src={bLogo} alt="" /> : <LuNfc size={20} />}</div><div><b>{bName}</b><span>MiniCRM</span></div></div>
         <nav className="nav col" style={{ gap: 2 }}>{NAV.filter(([r]) => allowed.includes(r)).map(([r, label, icon]) => (
           <a key={r} href={`#/${r}`} className={route === r ? 'active' : ''}>{icon}{label}{r === 'production' && lowStock > 0 && <span className="badge-dot">{lowStock}</span>}</a>))}</nav>
         <div className="side-foot">{isCloud ? 'Данные в облаке · синхронизация между устройствами' : 'Данные хранятся локально на этом устройстве'}

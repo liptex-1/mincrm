@@ -144,6 +144,14 @@ export async function fetchAbout(): Promise<AboutInfo> {
   const res = await fetch(`${SB_URL}/rest/v1/site_info?key=eq.about&select=data`, { headers: { apikey: SB_KEY } });
   const rows = await parse(res); return { ...emptyAbout, ...(rows?.[0]?.data ?? {}) };
 }
+export interface Brand { name: string; logo: string | null }
+export async function fetchBrand(): Promise<Brand | null> {
+  const rows = await parse(await fetch(`${SB_URL}/rest/v1/site_info?key=eq.brand&select=data`, { headers: { apikey: SB_KEY } }));
+  const d = rows?.[0]?.data; return d ? { name: d.name ?? '', logo: d.logo ?? null } : { name: '', logo: null };
+}
+export async function saveBrand(b: Brand) {
+  await api('/rest/v1/site_info?on_conflict=key', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ key: 'brand', data: b, updated_at: new Date().toISOString() }) });
+}
 export async function saveAbout(a: AboutInfo) {
   await api('/rest/v1/site_info?on_conflict=key', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ key: 'about', data: a, updated_at: new Date().toISOString() }) });
 }
