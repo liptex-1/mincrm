@@ -27,11 +27,11 @@ import { CHANGELOG, VERSION_LABEL } from './version';
 import { Modal } from './ui/kit';
 
 const NAV: [Route, string, React.ReactNode][] = [
-  ['profile', 'Профиль', <LuCircleUser size={18} />], ['dashboard', 'Главная', <LuLayoutDashboard size={18} />], ['clients', 'Клиенты', <LuUsers size={18} />], ['orders', 'Заказы', <LuShoppingBag size={18} />],
+  ['dashboard', 'Главная', <LuLayoutDashboard size={18} />], ['cabinet', 'Мой кабинет', <LuUserRound size={18} />], ['members', 'Участники', <LuUsers size={18} />], ['clients', 'Клиенты', <LuUsers size={18} />], ['orders', 'Заказы', <LuShoppingBag size={18} />],
   ['production', 'Производство', <LuFactory size={18} />], ['finance', 'Финансы', <LuWallet size={18} />], ['partners', 'Партнёры', <LuHandshake size={18} />],
   ['distribution', 'Распределение', <LuPiggyBank size={18} />], ['analytics', 'Аналитика', <LuChartColumn size={18} />], ['settings', 'Настройки', <LuSettings size={18} />],
-  ['access', 'Доступ', <LuKeyRound size={18} />], ['cabinet', 'Мой кабинет', <LuUserRound size={18} />],
-  ['members', 'Участники', <LuUsers size={18} />], ['about', 'О нас', <LuInfo size={18} />],
+  ['access', 'Доступ', <LuKeyRound size={18} />],
+  ['about', 'О нас', <LuInfo size={18} />],
 ];
 const Doc = ({ children }: { children: React.ReactNode }) => <div className="card" style={{ maxWidth: 860 }}>{children}</div>;
 function PrivacyPage() { return <Doc><PrivacyDoc /></Doc>; }
@@ -96,7 +96,6 @@ function Shell() {
           <a className="profile" href={isCloud ? '#/profile' : undefined} title={user?.email} aria-label="Профиль"><span className="pn">{isCloud ? `${shownName} · ${role?.title ?? ''}` : s.businessName}</span><Avatar name={isCloud ? shownName || '?' : s.businessName} src={isCloud ? profile?.avatar : null} /></a>
           {isCloud && <Btn kind="ghost icon" aria-label="Выйти" title="Выйти" onClick={signOutUser}><LuLogOut size={18} /></Btn>}
         </header>
-        {!canWrite && isCloud && role?.scope === 'all' && <div className="ro-banner">Режим просмотра — ваша роль «{role?.title}» не может изменять данные</div>}
         <main className="content" key={route}><Page /></main>
         {news && <Modal title={`Что нового · ${VERSION_LABEL}`} onClose={() => setNews(false)}>{CHANGELOG.map((c) => <div key={c.v} style={{ marginBottom: 16 }}><h3>Версия {c.v}v <span className="muted small">· {c.date}</span></h3><ul style={{ margin: '6px 0 0 18px', padding: 0 }}>{c.items.map((i) => <li key={i} className="small" style={{ marginBottom: 4 }}>{i}</li>)}</ul></div>)}</Modal>}
       </div>
