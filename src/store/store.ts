@@ -110,7 +110,7 @@ export async function signOutUser() {
 export async function updateProfile(p: cloud.ProfilePatch) {
   const u = state.user; if (!u) return;
   await cloud.saveProfile(u.id, p);
-  const profile = { ...(state.profile ?? { user_id: u.id, display_name: null, phone: null, about: null, avatar: null, show_phone: false, notify: cloud.defaultNotify }), ...p } as cloud.Profile;
+  const profile = { ...(state.profile ?? { user_id: u.id, display_name: null, phone: null, about: null, avatar: null, show_phone: false, hide_seen: false, notify: cloud.defaultNotify }), ...p } as cloud.Profile;
   set({ profile, members: state.members.map((m) => (m.user_id === u.id ? { ...m, display_name: profile.display_name, avatar: profile.avatar, about: profile.about, phone: profile.phone } : m)) });
 }
 async function reloadPeople() {

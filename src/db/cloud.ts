@@ -122,17 +122,17 @@ export const fetchMyOrders = (): Promise<{ client: { name: string; phone?: strin
 
 // ───────── Профиль пользователя и push ─────────
 export interface NotifyPrefs { new_user: boolean; orders: boolean; money: boolean; other: boolean; chat: boolean }
-export interface Profile { user_id: string; display_name: string | null; phone: string | null; about: string | null; avatar: string | null; show_phone: boolean; notify: NotifyPrefs }
+export interface Profile { user_id: string; display_name: string | null; phone: string | null; about: string | null; avatar: string | null; show_phone: boolean; hide_seen: boolean; notify: NotifyPrefs }
 export const defaultNotify: NotifyPrefs = { new_user: true, orders: true, money: true, other: false, chat: true };
 export async function fetchMyProfile(userId: string): Promise<Profile> {
-  const rows = await api(`/rest/v1/profiles?user_id=eq.${userId}&select=user_id,display_name,phone,about,avatar,show_phone,notify`);
-  return rows[0] ? { ...rows[0], notify: { ...defaultNotify, ...rows[0].notify } } : { user_id: userId, display_name: null, phone: null, about: null, avatar: null, show_phone: false, notify: defaultNotify };
+  const rows = await api(`/rest/v1/profiles?user_id=eq.${userId}&select=user_id,display_name,phone,about,avatar,show_phone,hide_seen,notify`);
+  return rows[0] ? { ...rows[0], notify: { ...defaultNotify, ...rows[0].notify } } : { user_id: userId, display_name: null, phone: null, about: null, avatar: null, show_phone: false, hide_seen: false, notify: defaultNotify };
 }
 export type ProfilePatch = Partial<Omit<Profile, 'user_id'>>;
 export async function saveProfile(userId: string, p: ProfilePatch) {
   await api('/rest/v1/profiles?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: userId, ...p, updated_at: new Date().toISOString() }) });
 }
-export interface Member { user_id: string; email: string | null; role: string; role_title: string; display_name: string | null; avatar: string | null; about: string | null; phone: string | null; online: boolean; seen_ago_s: number | null; created_at: string; blocked: boolean; partner_id: string | null; client_id: string | null }
+export interface Member { user_id: string; email: string | null; role: string; role_title: string; display_name: string | null; avatar: string | null; about: string | null; phone: string | null; online: boolean; seen_ago_s: number | null; created_at: string; blocked: boolean; partner_id: string | null; client_id: string | null; seen_hidden?: boolean }
 export const fetchMembers = (): Promise<Member[]> => rpc('members', {});
 export const touchSeen = () => rpc('touch_seen', {});
 export const adminSetBlocked = (target: string, flag: boolean) => rpc('admin_set_blocked', { target, flag });

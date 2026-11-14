@@ -7,6 +7,7 @@ import { Avatar, Btn, Card, Chip, Empty, Field, Input, Modal, SearchBox, Seg, Te
 
 export const nameOf = (m: Pick<Member, 'display_name' | 'email'>) => m.display_name?.trim() || m.email || 'Без имени';
 export const seenText = (m: Member) => {
+  if (m.seen_hidden) return 'Был(а) недавно';
   if (m.online) return 'В сети';
   const s = m.seen_ago_s; if (s === null || s === undefined) return 'Не заходил(а)';
   if (s < 3600) return `Был(а) ${Math.max(1, Math.round(s / 60))} мин назад`;

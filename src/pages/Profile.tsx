@@ -74,6 +74,7 @@ export default function Profile() {
             <Field label="Телефон"><Input aria-label="Телефон" type="tel" value={phone} maxLength={40} onChange={(e) => setPhone(e.target.value)} placeholder="+7 900 000-00-00" autoComplete="tel" /></Field>
             <Field label="О себе"><Textarea aria-label="О себе" value={about} maxLength={400} rows={3} onChange={(e) => setAbout(e.target.value)} placeholder="Пара слов о себе — увидят другие участники" /></Field>
             <div className="notify-row" style={{ borderTop: 0, padding: 0 }}><div><b>Показывать телефон другим участникам</b><div className="small muted">Владелец видит телефон всегда</div></div><Switch on={!!profile?.show_phone} label="Показывать телефон" onChange={(v) => guard(() => updateProfile({ show_phone: v }))} /></div>
+            <div className="notify-row" style={{ borderTop: 0, padding: 0 }}><div><b>Скрыть, когда я онлайн</b><div className="small muted">Другие увидят «был(а) недавно» вместо статуса «в сети» и времени последнего захода. Вы свой статус видите как обычно.</div></div><Switch on={!!profile?.hide_seen} label="Скрыть онлайн" onChange={(v) => guard(() => updateProfile({ hide_seen: v }), v ? 'Теперь вы «был(а) недавно»' : 'Статус снова виден')} /></div>
             <Btn kind="primary" type="submit" disabled={busy}>Сохранить</Btn>
           </form>
         </Card>
