@@ -12,11 +12,11 @@ export const ALL_SECTIONS = ['dashboard', 'clients', 'orders', 'production', 'fi
 export interface AppState {
   ready: boolean; persistent: boolean; data: Data;
   cloud: boolean; auth: AuthState; user?: { id: string; email: string };
-  me?: UserRole; role?: RoleDef; roles: RoleDef[]; users: UserRole[]; profile?: cloud.Profile; members: cloud.Member[]; canWrite: boolean; notice?: string;
+  me?: UserRole; role?: RoleDef; roles: RoleDef[]; users: UserRole[]; profile?: cloud.Profile; members: cloud.Member[]; chats: cloud.ChatInfo[]; media: Record<string, cloud.ChatMedia>; canWrite: boolean; notice?: string;
 }
 const LOCAL_ROLE: RoleDef = { key: 'owner', title: 'Владелец', description: '', scope: 'all', read_collections: [], sections: ALL_SECTIONS, can_write: true, is_system: true };
 
-let state: AppState = { ready: false, persistent: true, data: emptyData(), cloud: cloud.CLOUD, auth: 'loading', roles: [], users: [], members: [], canWrite: true };
+let state: AppState = { ready: false, persistent: true, data: emptyData(), cloud: cloud.CLOUD, auth: 'loading', roles: [], users: [], members: [], chats: [], media: {}, canWrite: true };
 const listeners = new Set<() => void>();
 let adapter: StorageAdapter | null = null;
 let queue: Promise<unknown> = Promise.resolve();
@@ -64,7 +64,8 @@ export async function enter() {
     const users = role.key === 'owner' ? await cloud.fetchUsers() : [];
     const [profile, members] = await Promise.all([cloud.fetchMyProfile(user.id).catch(() => undefined), cloud.fetchMembers().catch(() => [] as cloud.Member[])]);
     cloud.touchSeen().catch(() => undefined);
-    set({ user, me, role, roles, users, profile, members, data, canWrite: role.can_write, auth: 'ready', persistent: true });
+    const chats = await cloud.fetchChats().catch(() => [] as cloud.ChatInfo[]);
+    set({ user, me, role, roles, users, profile, members, chats, data, canWrite: role.can_write, auth: 'ready', persistent: true });
     startPolling();
   } catch (e) {
     if (e instanceof cloud.CloudError && e.status === 401) { await signOutUser(); set({ notice: 'Сессия истекла — войдите снова' }); }
@@ -77,7 +78,7 @@ function startPolling() {
   let n = 0;
   const tick = async () => {
     if (document.hidden || pending > 0 || state.auth !== 'ready') return;
-    try { if (n++ % 3 === 0) cloud.touchSeen().catch(() => undefined); await refreshFromCloud(); } catch { /* временная сеть — повторим */ }
+    try { if (n++ % 3 === 0) cloud.touchSeen().catch(() => undefined); refreshChats(); await refreshFromCloud(); } catch { /* временная сеть — повторим */ }
   };
   poll = setInterval(tick, 20000);
   document.addEventListener('visibilitychange', tick);
@@ -104,7 +105,7 @@ export async function signOutUser() {
   stopPolling();
   try { const { disablePush } = await import('../pwa'); await disablePush(); } catch { /* ignore */ }
   await cloud.signOut();
-  set({ auth: 'signed_out', user: undefined, me: undefined, role: undefined, users: [], profile: undefined, members: [], data: emptyData(), canWrite: false, notice: undefined });
+  set({ auth: 'signed_out', user: undefined, me: undefined, role: undefined, users: [], profile: undefined, members: [], chats: [], media: {}, data: emptyData(), canWrite: false, notice: undefined });
 }
 export async function updateProfile(p: cloud.ProfilePatch) {
   const u = state.user; if (!u) return;
@@ -120,6 +121,37 @@ async function reloadPeople() {
 export async function adminEditProfile(userId: string, p: cloud.ProfilePatch) { await cloud.saveProfile(userId, p); await reloadPeople(); }
 export async function adminBlock(userId: string, flag: boolean) { await cloud.adminSetBlocked(userId, flag); await reloadPeople(); }
 export async function adminDelete(userId: string) { await cloud.adminDeleteUser(userId); await reloadPeople(); }
+/** Список чатов: вызывается опросом и страницей чатов. */
+export async function refreshChats() {
+  if (state.auth !== 'ready' || !state.cloud) return;
+  try {
+    const chats = await cloud.fetchChats();
+    if (JSON.stringify(chats) !== JSON.stringify(state.chats)) set({ chats });
+    for (const c of chats) { // подтягиваем аватарки групп при смене версии
+      const m = state.media[c.id];
+      if (c.kind === 'group' && c.has_avatar && m?.avatar_v !== c.avatar_v) ensureChatMedia(c, false);
+    }
+  } catch { /* сеть */ }
+}
+const mediaBusy = new Set<string>();
+const EMPTY_MEDIA: cloud.ChatMedia = { avatar: null, wallpaper: null, avatar_v: -1, wallpaper_v: -1 };
+/** Тяжёлые картинки (аватарка группы, обои) грузим отдельно и только при смене версии. */
+export async function ensureChatMedia(c: cloud.ChatInfo, wallpaper: boolean) {
+  const cur = state.media[c.id] ?? EMPTY_MEDIA;
+  const patch: Partial<cloud.ChatMedia> = {};
+  if (!c.has_avatar && cur.avatar) { patch.avatar = null; patch.avatar_v = c.avatar_v; }
+  if (!c.has_wallpaper && cur.wallpaper) { patch.wallpaper = null; patch.wallpaper_v = c.wallpaper_v; }
+  if (Object.keys(patch).length) set({ media: { ...state.media, [c.id]: { ...cur, ...patch } } });
+  for (const [col, need] of [['avatar', c.has_avatar && cur.avatar_v !== c.avatar_v], ['wallpaper', wallpaper && c.has_wallpaper && cur.wallpaper_v !== c.wallpaper_v]] as const) {
+    if (!need) continue;
+    const key = `${c.id}:${col}:${col === 'avatar' ? c.avatar_v : c.wallpaper_v}`; if (mediaBusy.has(key)) continue; mediaBusy.add(key);
+    try {
+      const f = await cloud.fetchChatMedia(c.id, col); if (!f) continue;
+      const now = state.media[c.id] ?? EMPTY_MEDIA;
+      set({ media: { ...state.media, [c.id]: { ...now, ...f } } });
+    } catch { /* повторим при следующем опросе */ } finally { mediaBusy.delete(key); }
+  }
+}
 export const clearNotice = () => set({ notice: undefined });
 
 // ───────── Запись ─────────

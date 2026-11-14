@@ -16,11 +16,11 @@ export async function avatarFromFile(file: File, size = 256): Promise<string> {
   return c.toDataURL('image/jpeg', 0.85);
 }
 /** Фон: длинная сторона не больше maxSide. */
-export async function backgroundFromFile(file: File, maxSide = 1920): Promise<string> {
+export async function backgroundFromFile(file: File, maxSide = 1920, quality = 0.8): Promise<string> {
   const im = await load(file); const k = Math.min(1, maxSide / Math.max(im.naturalWidth, im.naturalHeight));
   const c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
   c.getContext('2d')!.drawImage(im, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.8);
+  return c.toDataURL('image/jpeg', quality);
 }
 /** Логотип: до 256 px по длинной стороне, PNG (сохраняет прозрачность). */
 export async function logoFromFile(file: File, max = 256): Promise<string> {

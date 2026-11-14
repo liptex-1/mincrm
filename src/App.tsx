@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { LuChartColumn, LuCircleUser, LuInfo, LuSparkles, LuKeyRound, LuLogOut, LuUserRound, LuHandshake, LuLayoutDashboard, LuMenu, LuMoon, LuNfc, LuPiggyBank, LuSearch, LuSettings, LuShoppingBag, LuSun, LuUsers, LuWallet, LuFactory } from 'react-icons/lu';
+import { LuChartColumn, LuCircleUser, LuMessageCircle, LuInfo, LuSparkles, LuKeyRound, LuLogOut, LuUserRound, LuHandshake, LuLayoutDashboard, LuMenu, LuMoon, LuNfc, LuPiggyBank, LuSearch, LuSettings, LuShoppingBag, LuSun, LuUsers, LuWallet, LuFactory } from 'react-icons/lu';
 import { computeOrder } from './domain/finance';
 import { signOutUser, useApp, useData } from './store/store';
 import { Avatar, Btn, UiProvider } from './ui/kit';
@@ -18,6 +18,7 @@ import Cabinet from './pages/Cabinet';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import Members from './pages/Members';
+import Chats from './pages/Chats';
 import About from './pages/About';
 import { CookiesDoc, PrivacyDoc, PublicLegal, TermsDoc } from './pages/Legal';
 import { CookieBanner } from './ui/CookieBanner';
@@ -28,7 +29,7 @@ import { CHANGELOG, VERSION_LABEL } from './version';
 import { Modal } from './ui/kit';
 
 const NAV: [Route, string, React.ReactNode][] = [
-  ['dashboard', 'Главная', <LuLayoutDashboard size={18} />], ['cabinet', 'Мой кабинет', <LuUserRound size={18} />], ['members', 'Участники', <LuUsers size={18} />], ['clients', 'Клиенты', <LuUsers size={18} />], ['orders', 'Заказы', <LuShoppingBag size={18} />],
+  ['dashboard', 'Главная', <LuLayoutDashboard size={18} />], ['cabinet', 'Мой кабинет', <LuUserRound size={18} />], ['members', 'Участники', <LuUsers size={18} />], ['chats', 'Чаты', <LuMessageCircle size={18} />], ['clients', 'Клиенты', <LuUsers size={18} />], ['orders', 'Заказы', <LuShoppingBag size={18} />],
   ['production', 'Производство', <LuFactory size={18} />], ['finance', 'Финансы', <LuWallet size={18} />], ['partners', 'Партнёры', <LuHandshake size={18} />],
   ['distribution', 'Распределение', <LuPiggyBank size={18} />], ['analytics', 'Аналитика', <LuChartColumn size={18} />], ['settings', 'Настройки', <LuSettings size={18} />],
   ['access', 'Доступ', <LuKeyRound size={18} />],
@@ -38,8 +39,8 @@ const Doc = ({ children }: { children: React.ReactNode }) => <div className="car
 function PrivacyPage() { return <Doc><PrivacyDoc /></Doc>; }
 function TermsPage() { return <Doc><TermsDoc /></Doc>; }
 function CookiesPage() { return <Doc><CookiesDoc /></Doc>; }
-const COMMON = ['profile', 'members', 'about', 'privacy', 'terms', 'cookies'];
-const PAGES: Record<Route, () => React.JSX.Element> = { dashboard: Dashboard, clients: Clients, orders: Orders, production: Production, finance: Finance, partners: Partners, distribution: Distribution, analytics: Analytics, settings: Settings, access: Access, cabinet: Cabinet, profile: Profile, members: Members, about: About, privacy: PrivacyPage, terms: TermsPage, cookies: CookiesPage };
+const COMMON = ['profile', 'members', 'chats', 'about', 'privacy', 'terms', 'cookies'];
+const PAGES: Record<Route, () => React.JSX.Element> = { dashboard: Dashboard, clients: Clients, orders: Orders, production: Production, finance: Finance, partners: Partners, distribution: Distribution, analytics: Analytics, settings: Settings, access: Access, cabinet: Cabinet, profile: Profile, members: Members, chats: Chats, about: About, privacy: PrivacyPage, terms: TermsPage, cookies: CookiesPage };
 
 const themePref = () => readOpt('minicrm.theme');
 function applyTheme(theme: string, density: string, anim: boolean) {
@@ -62,6 +63,7 @@ function Shell() {
   const s = d.settings;
   const profile = useApp((x) => x.profile);
   const brand = useBrand();
+  const chatUnread = useApp((x) => x.chats.reduce((a, c) => a + (c.my_status === 'pending' ? 1 : c.unread), 0));
   const bName = (isCloud ? brand.name : '') || s.businessName;
   const bLogo = isCloud ? brand.logo : s.logo;
   const shownName = profile?.display_name || user?.email || '';
@@ -89,7 +91,7 @@ function Shell() {
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="brand"><div className="brand-logo">{bLogo ? <img src={bLogo} alt="" /> : <LuNfc size={20} />}</div><div><b>{bName}</b><span>MiniCRM</span></div></div>
         <nav className="nav col" style={{ gap: 2 }}>{NAV.filter(([r]) => allowed.includes(r)).map(([r, label, icon]) => (
-          <a key={r} href={`#/${r}`} className={route === r ? 'active' : ''}>{icon}{label}{r === 'production' && lowStock > 0 && <span className="badge-dot">{lowStock}</span>}</a>))}</nav>
+          <a key={r} href={`#/${r}`} className={route === r ? 'active' : ''}>{icon}{label}{r === 'production' && lowStock > 0 && <span className="badge-dot">{lowStock}</span>}{r === 'chats' && chatUnread > 0 && <span className="badge-dot">{chatUnread}</span>}</a>))}</nav>
         <div className="side-foot">{isCloud ? 'Данные в облаке · синхронизация между устройствами' : 'Данные хранятся локально на этом устройстве'}
           <button type="button" className="ver" onClick={() => setNews(true)}><LuSparkles size={13} /> Обновление {VERSION_LABEL}</button></div>
       </aside>

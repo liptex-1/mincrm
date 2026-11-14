@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 /** Мини-роутер на hash: работает при открытии файла напрямую, без сервера. */
-export const routes = ['dashboard', 'clients', 'orders', 'production', 'finance', 'partners', 'distribution', 'analytics', 'settings', 'cabinet', 'access', 'profile', 'members', 'about', 'privacy', 'terms', 'cookies'] as const;
+export const routes = ['dashboard', 'clients', 'orders', 'production', 'finance', 'partners', 'distribution', 'analytics', 'settings', 'cabinet', 'access', 'profile', 'members', 'chats', 'about', 'privacy', 'terms', 'cookies'] as const;
 export type Route = (typeof routes)[number];
 
 export function currentRoute(): { route: Route; param?: string } {

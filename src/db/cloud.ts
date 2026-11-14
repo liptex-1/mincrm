@@ -121,9 +121,9 @@ export async function deleteRole(key: string) {
 export const fetchMyOrders = (): Promise<{ client: { name: string; phone?: string; telegram?: string; email?: string } | null; orders: any[] }> => rpc('my_orders', {});
 
 // ───────── Профиль пользователя и push ─────────
-export interface NotifyPrefs { new_user: boolean; orders: boolean; money: boolean; other: boolean }
+export interface NotifyPrefs { new_user: boolean; orders: boolean; money: boolean; other: boolean; chat: boolean }
 export interface Profile { user_id: string; display_name: string | null; phone: string | null; about: string | null; avatar: string | null; show_phone: boolean; notify: NotifyPrefs }
-export const defaultNotify: NotifyPrefs = { new_user: true, orders: true, money: true, other: false };
+export const defaultNotify: NotifyPrefs = { new_user: true, orders: true, money: true, other: false, chat: true };
 export async function fetchMyProfile(userId: string): Promise<Profile> {
   const rows = await api(`/rest/v1/profiles?user_id=eq.${userId}&select=user_id,display_name,phone,about,avatar,show_phone,notify`);
   return rows[0] ? { ...rows[0], notify: { ...defaultNotify, ...rows[0].notify } } : { user_id: userId, display_name: null, phone: null, about: null, avatar: null, show_phone: false, notify: defaultNotify };
@@ -144,6 +144,30 @@ export async function fetchAbout(): Promise<AboutInfo> {
   const res = await fetch(`${SB_URL}/rest/v1/site_info?key=eq.about&select=data`, { headers: { apikey: SB_KEY } });
   const rows = await parse(res); return { ...emptyAbout, ...(rows?.[0]?.data ?? {}) };
 }
+// ───────── Чаты ─────────
+export interface ChatInfo {
+  id: string; kind: 'direct' | 'group'; title: string | null; description: string | null; avatar_v: number; wallpaper_v: number; has_avatar: boolean; has_wallpaper: boolean;
+  created_by: string | null; last_message_at: string; my_status: 'active' | 'pending' | 'declined'; unread: number;
+  last: { sender_id: string | null; body: string; created_at: string; deleted: boolean } | null; members: { user_id: string; status: string }[];
+}
+export interface ChatMsg { id: string; sender_id: string | null; body: string; created_at: string; deleted_at: string | null }
+export interface ChatMedia { avatar_v: number; wallpaper_v: number; avatar: string | null; wallpaper: string | null }
+export const fetchChats = async (): Promise<ChatInfo[]> => (await rpc('chat_overview', {})) ?? [];
+export async function fetchChatMedia(id: string, cols: 'avatar' | 'wallpaper'): Promise<Partial<ChatMedia> | null> {
+  const rows = await api(`/rest/v1/chats?id=eq.${id}&select=${cols},${cols}_v`); return rows[0] ?? null;
+}
+export const fetchMessages = (chatId: string, limit: number): Promise<ChatMsg[]> => api(`/rest/v1/chat_messages?chat_id=eq.${chatId}&order=created_at.desc&limit=${limit}&select=id,sender_id,body,created_at,deleted_at`);
+export const chatOpenDirect = (target: string): Promise<string> => rpc('chat_open_direct', { target });
+export const chatRespond = (cid: string, accept: boolean) => rpc('chat_respond', { cid, accept });
+export const chatCreateGroup = (title: string, description: string, member_ids: string[]): Promise<string> => rpc('chat_create_group', { p_title: title, p_description: description, member_ids });
+export const chatUpdate = (cid: string, patch: Record<string, string | null>) => rpc('chat_update', { cid, patch });
+export const chatGroupMembers = (cid: string, add_ids: string[], remove_ids: string[]) => rpc('chat_group_members', { cid, add_ids, remove_ids });
+export const chatLeave = (cid: string) => rpc('chat_leave', { cid });
+export const chatDelete = (cid: string) => rpc('chat_delete', { cid });
+export const chatSend = (cid: string, body: string): Promise<string> => rpc('chat_send', { cid, p_body: body });
+export const chatMarkRead = (cid: string) => rpc('chat_mark_read', { cid });
+export const chatDeleteMessage = (mid: string) => rpc('chat_delete_message', { mid });
+
 export interface Brand { name: string; logo: string | null }
 export async function fetchBrand(): Promise<Brand | null> {
   const rows = await parse(await fetch(`${SB_URL}/rest/v1/site_info?key=eq.brand&select=data`, { headers: { apikey: SB_KEY } }));
